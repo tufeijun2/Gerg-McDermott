@@ -127,7 +127,7 @@
 
       <!-- Trading Record Divider -->
       <div class="trade-separator">
-        <h3><i class="bi bi-clipboard-data"></i> Trading Records (Last 3 Months)</h3>
+        <h3><i class="bi bi-clipboard-data"></i> Trading Records (Last 1 Year)</h3>
         <div class="divider-line"></div>
       </div>
 
@@ -411,11 +411,14 @@
             </div>
         </div>
     </div>
+    <!-- 合作单位 -->
+    <PartnerOrganizations />
   </div>
 </template>
 
 <script lang="ts" setup>
 import navcomponent from '../component/nav/nav.vue'
+import PartnerOrganizations from '@/components/PartnerOrganizations.vue';
 import moment from 'moment';
 import { ref, reactive, onMounted } from 'vue'
 import { Modal } from 'bootstrap';
@@ -457,15 +460,36 @@ const likeIcon = ref<HTMLElement | null>(null);
 // 初始化加载数据
 onMounted(() => {
   try{
-  let indexdata=JSON.parse(userStore.indexData || '{}');
+  // 检查 indexData 是否已经是对象，如果是则直接使用，否则解析 JSON
+  let indexdata;
+  if (typeof userStore.indexData === 'string') {
+    indexdata = JSON.parse(userStore.indexData || '{}');
+  } else {
+    indexdata = userStore.indexData || {};
+  }
   trader_profiles.value=indexdata.trader_profiles;
     if(indexdata.strategy_info){
       strategy_info.value=indexdata.strategy_info;
     }
     
-    // 对本地存储的数据也进行排序
+    // 对本地存储的数据也进行过滤和排序
     if(indexdata.trades && Array.isArray(indexdata.trades)) {
-      const sortedTrades = indexdata.trades.sort((a: any, b: any) => {
+      // 首先过滤出1年内的交易记录
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      
+      const filteredTrades = indexdata.trades.filter((trade: any) => {
+        // 如果有退出日期，以退出时间为准，只显示退出时间在1年内的交易
+        if (trade.exit_date) {
+          const exitDate = new Date(trade.exit_date);
+          // 只检查退出时间是否在1年内
+          return exitDate >= oneYearAgo;
+        }
+        // 如果没有退出日期（Active状态），显示所有Active交易
+        return true;
+      });
+      
+      const sortedTrades = filteredTrades.sort((a: any, b: any) => {
         // 首先按重点交易排序：重点交易在前
         // 处理 null/undefined 的情况
         const isImportantA = a.is_important === true || a.is_important === 1 || a.is_important === 'true' || a.is_featured === true || a.is_featured === 1;
@@ -689,15 +713,30 @@ const handleAvatarUpload = (event: Event) => {
 };
 const getindexdata= async()=>{
   const res=await getIndexData();
-  if(res.success){
+  if(res.success && res.data){
     userStore.indexData=JSON.stringify(res.data);
     trader_profiles.value=res.data.trader_profiles;
      if(res.data.strategy_info){
     strategy_info.value=res.data.strategy_info;
      }
     
+    // 首先过滤出1年内的交易记录
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    
+    const filteredTrades = res.data.trades.filter((trade: any) => {
+      // 如果有退出日期，以退出时间为准，只显示退出时间在1年内的交易
+      if (trade.exit_date) {
+        const exitDate = new Date(trade.exit_date);
+        // 只检查退出时间是否在1年内
+        return exitDate >= oneYearAgo;
+      }
+      // 如果没有退出日期（Active状态），显示所有Active交易
+      return true;
+    });
+    
     // 复杂排序：首先按重点交易，然后按状态，最后按时间
-    const sortedTrades = res.data.trades.sort((a: any, b: any) => {
+    const sortedTrades = filteredTrades.sort((a: any, b: any) => {
       // 首先按重点交易排序：重点交易在前
       // 处理 null/undefined 的情况
       const isImportantA = a.is_important === true || a.is_important === 1 || a.is_important === 'true' || a.is_featured === true || a.is_featured === 1;
